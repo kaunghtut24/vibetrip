@@ -13,7 +13,7 @@ const CONFIG = {
   // Different timeouts for different agents
   INTENT_TIMEOUT_MS: 15000,      // IntentParser: 15s
   DISCOVERY_TIMEOUT_MS: 20000,   // DiscoveryAgent: 20s
-  OPTIMIZATION_TIMEOUT_MS: 45000, // OptimizationAgent: 45s (most complex)
+  OPTIMIZATION_TIMEOUT_MS: 35000, // OptimizationAgent: 35s (most complex)
   REFINE_TIMEOUT_MS: 30000       // RefineAgent: 30s
 };
 
@@ -193,7 +193,7 @@ export const IntentZodSchema = z.object({
  */
 export const parseIntentAgent = async (chatHistory: string, userProfile?: UserProfile | null): Promise<TripIntent> => {
   const logId = agentLogger.start("IntentParser", { chatHistory, userProfile });
-  const model = "gemini-2.5-flash-preview-09-2025";
+  const model = "gemini-2.5-flash";
   
   // Construct profile context string
   const profileContext = userProfile ? `
@@ -283,7 +283,7 @@ export const parseIntentAgent = async (chatHistory: string, userProfile?: UserPr
         const validationResult = IntentZodSchema.safeParse(parsedJson);
 
         if (!validationResult.success) {
-          throw new Error(`Validation Error: ${validationResult.error.errors[0]?.message}`);
+          throw new Error(`Validation Error: ${validationResult.error?.errors[0]?.message || 'Unknown validation error'}`);
         }
 
         // Transform currencies array to currencyRates Record
@@ -291,7 +291,11 @@ export const parseIntentAgent = async (chatHistory: string, userProfile?: UserPr
         const currencyRates: Record<string, { code: string; symbol: string; rateToUSD: number }> = {};
         if (data.currencies && Array.isArray(data.currencies)) {
           for (const curr of data.currencies) {
-            currencyRates[curr.code] = curr;
+            currencyRates[curr.code] = {
+              code: curr.code,
+              symbol: curr.symbol,
+              rateToUSD: curr.rateToUSD
+            };
           }
         }
         // Default to USD if no currencies detected
@@ -325,7 +329,7 @@ export const parseIntentAgent = async (chatHistory: string, userProfile?: UserPr
  */
 export const discoveryAgent = async (intent: TripIntent): Promise<DiscoveryResult> => {
   const logId = agentLogger.start("DiscoveryAgent", intent);
-  const model = "gemini-2.5-flash-preview-09-2025"; 
+  const model = "gemini-2.5-flash"; 
 
   const placeSchema = {
     type: Type.OBJECT,
@@ -341,7 +345,8 @@ export const discoveryAgent = async (intent: TripIntent): Promise<DiscoveryResul
           lat: { type: Type.NUMBER },
           lng: { type: Type.NUMBER },
         }
-      }
+      },
+      imageUrl: { type: Type.STRING, description: "URL of an image representing this place, relevant to the destination or activity" }
     }
   };
 
@@ -363,9 +368,9 @@ export const discoveryAgent = async (intent: TripIntent): Promise<DiscoveryResul
       async () => {
         const text = await callGeminiGenerate({
           model,
-          contents: `Find candidates for a ${intent.durationDays}-day trip to ${intent.destination}. Budget: ${intent.budgetLevel}. Vibe: ${intent.vibes.join(", ")}. Provide approximate lat/lng coordinates and local currency code for each place.`,
+          contents: `Find candidates for a ${intent.durationDays}-day trip to ${intent.destination}. Budget: ${intent.budgetLevel}. Vibe: ${intent.vibes.join(", ")}. Provide approximate lat/lng coordinates, local currency code, and relevant image URLs for each place.`,
           config: {
-            systemInstruction: "You are an expert Travel Scout. Find specific, real places.",
+            systemInstruction: "You are an expert Travel Scout. Find specific, real places. For each place, provide a relevant image URL that represents the destination or activity.",
             responseMimeType: "application/json",
             responseSchema: schema
           }
@@ -416,7 +421,7 @@ export const discoveryAgent = async (intent: TripIntent): Promise<DiscoveryResul
 export const optimizationAgent = async (intent: TripIntent, candidates: DiscoveryResult): Promise<OptimizationResult> => {
   const logId = agentLogger.start("OptimizationAgent", { intent, candidates });
   // Use gemini-2.5-flash for optimization
-  const model = "gemini-2.5-flash";
+  const model = "gemini-3-flash-preview";
   
   const itinerarySchema = {
     type: Type.OBJECT,
@@ -503,7 +508,7 @@ export const refineItineraryAgent = async (
 ): Promise<Itinerary> => {
   const logId = agentLogger.start("RefineItineraryAgent", { instruction, currentItineraryId: currentItinerary.id });
   // Use faster model for refine operations
-  const model = "gemini-2.0-flash-exp";
+  const model = "gemini-2.0-flash";
 
   const itinerarySchema = {
     type: Type.OBJECT,

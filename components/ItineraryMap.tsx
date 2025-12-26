@@ -53,7 +53,7 @@ const ItineraryMap: React.FC<ItineraryMapProps> = ({ days }) => {
       }
 
       console.log('[ItineraryMap] Loading Google Maps script...');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,marker&v=weekly`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,marker&v=weekly&loading=async`;
       script.id = 'google-maps-script';
       script.async = true;
       script.defer = true;
@@ -94,14 +94,8 @@ const ItineraryMap: React.FC<ItineraryMapProps> = ({ days }) => {
           center: { lat: 20, lng: 0 },
           mapTypeControl: false,
           streetViewControl: false,
-          mapId: 'VIBETRIP_MAP', // Required for AdvancedMarkerElement
-          styles: [
-              {
-                  "featureType": "poi",
-                  "elementType": "labels",
-                  "stylers": [{ "visibility": "off" }]
-              }
-          ]
+          mapId: 'VIBETRIP_MAP' // Required for AdvancedMarkerElement
+          // Note: When mapId is present, styles are controlled via Google Cloud Console
         });
         setMap(initialMap);
         setIsLoading(false);

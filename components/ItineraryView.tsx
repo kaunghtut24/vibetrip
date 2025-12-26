@@ -22,6 +22,7 @@ const ItineraryView: React.FC<ItineraryViewProps> = ({ itineraries, onConfirm, i
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [showReasoning, setShowReasoning] = useState(false);
   const [hoveredPlace, setHoveredPlace] = useState<string | null>(null);
+ const [expandedDescriptions, setExpandedDescriptions] = useState<Record<string, boolean>>({});
   
   const selectedItinerary = itineraries[selectedIdx];
 
@@ -278,7 +279,26 @@ const ItineraryView: React.FC<ItineraryViewProps> = ({ itineraries, onConfirm, i
                             {place.estimatedCost}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-600 line-clamp-2 mb-2">{place.description}</p>
+                        <div className="text-sm text-gray-600 mb-2">
+                          {expandedDescriptions[uniqueKey] 
+                            ? place.description
+                            : `${place.description.substring(0, 100)}${place.description.length > 100 ? '...' : ''}`
+                          }
+                          {place.description.length > 100 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedDescriptions(prev => ({
+                                  ...prev,
+                                  [uniqueKey]: !prev[uniqueKey]
+                                }));
+                              }}
+                              className="ml-2 text-blue-600 hover:text-blue-800 font-semibold text-xs"
+                            >
+                              {expandedDescriptions[uniqueKey] ? 'See less' : 'See more'}
+                            </button>
+                          )}
+                        </div>
                         <div className="mt-2 flex items-center gap-2">
                           <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider
                             ${place.type === 'Activity' ? 'bg-orange-100 text-orange-700' : 

@@ -161,34 +161,7 @@ export const exportItineraryToPDF = (itinerary: Itinerary) => {
   yPosition = margin;
 
   // ===== TRAVEL TIPS =====
-  if (itinerary.reasoning?.travelTips && itinerary.reasoning.travelTips.length > 0) {
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(0, 0, 0);
-    doc.text('💡 Travel Tips & Recommendations', margin, yPosition);
-    yPosition += 10;
-
-    itinerary.reasoning.travelTips.forEach((tip, idx) => {
-      checkPageBreak(20);
-
-      doc.setFillColor(254, 249, 195); // Yellow tint
-      doc.roundedRect(margin, yPosition, contentWidth, 15, 2, 2, 'F');
-      doc.setDrawColor(250, 204, 21);
-      doc.roundedRect(margin, yPosition, contentWidth, 15, 2, 2, 'S');
-
-      doc.setFontSize(10);
-      doc.setTextColor(0, 0, 0);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`${idx + 1}.`, margin + 5, yPosition + 6);
-
-      doc.setFont('helvetica', 'normal');
-      const tipHeight = addWrappedText(tip, margin + 12, yPosition + 6, contentWidth - 15, 10);
-
-      yPosition += Math.max(15, tipHeight + 8);
-    });
-
-    yPosition += 10;
-  }
+  // Note: There are no travelTips in the PlanReasoning type, so this section is removed
 
   // ===== BUDGET BREAKDOWN =====
   checkPageBreak(60);
@@ -202,7 +175,9 @@ export const exportItineraryToPDF = (itinerary: Itinerary) => {
   const categoryTotals: { [key: string]: number } = {};
   itinerary.days.forEach(day => {
     [...day.morning, ...day.afternoon, ...day.evening].forEach(place => {
-      const cost = parseFloat(place.estimatedCost.replace(/[^0-9.]/g, '')) || 0;
+      // Extract numeric value from estimatedCost, handling various currency formats
+      const costMatch = place.estimatedCost.match(/[\d.,]+/);
+      const cost = costMatch ? parseFloat(costMatch[0].replace(/,/g, '')) : 0;
       categoryTotals[place.type] = (categoryTotals[place.type] || 0) + cost;
     });
   });
@@ -282,13 +257,15 @@ export const exportItineraryToPDF = (itinerary: Itinerary) => {
         doc.setFillColor(243, 232, 255);
         doc.roundedRect(margin + 5, yPosition, contentWidth - 10, 12, 2, 2, 'F');
 
-        doc.setFontSize(10);
-        doc.setTextColor(0, 0, 0);
-        doc.setFont('helvetica', 'bold');
-        doc.text(`${vibe.userVibe}`, margin + 8, yPosition + 5);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(75, 85, 99);
-        doc.text(`→ ${vibe.matchedPlace}`, margin + 8, yPosition + 9);
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${vibe.vibe}`, margin + 8, yPosition + 5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(75, 85, 99);
+      // Display the first few matched activities
+      const activitiesText = vibe.matchedActivities.slice(0, 3).join(', ');
+      doc.text(`→ ${activitiesText}`, margin + 8, yPosition + 9);
 
         yPosition += 14;
       });
@@ -296,26 +273,6 @@ export const exportItineraryToPDF = (itinerary: Itinerary) => {
       yPosition += 5;
     }
 
-    // Optimization Factors
-    if (itinerary.reasoning.optimizationFactors && itinerary.reasoning.optimizationFactors.length > 0) {
-      checkPageBreak(30);
-
-      doc.setFontSize(12);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(0, 0, 0);
-      doc.text('Optimization Factors:', margin, yPosition);
-      yPosition += 8;
-
-      itinerary.reasoning.optimizationFactors.forEach((factor) => {
-        checkPageBreak(10);
-
-        doc.setFontSize(9);
-        doc.setTextColor(75, 85, 99);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`• ${factor}`, margin + 8, yPosition);
-        yPosition += 6;
-      });
-    }
   }
 
   // ===== FOOTER =====
@@ -342,4 +299,3 @@ export const exportItineraryToPDF = (itinerary: Itinerary) => {
   const fileName = `${itinerary.title.replace(/[^a-z0-9]/gi, '_')}_Itinerary.pdf`;
   doc.save(fileName);
 };
-
