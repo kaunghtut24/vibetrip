@@ -1,0 +1,5 @@
+{
+  "name": "VibeTrip AI",
+  "description": "A multi-agent AI trip planner that orchestrates intent parsing, discovery, and optimization to build the perfect itinerary using Gemini 2.5 and Google Maps.",
+  "requestFramePermissions": []
+}
