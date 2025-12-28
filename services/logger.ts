@@ -1,3 +1,5 @@
+import { trackAgentExecution } from './metrics';
+
 export interface AgentLog {
   id: string;
   agentName: string;
@@ -89,6 +91,10 @@ class LoggerService {
       log.durationMs = Date.now() - log.timestamp;
       log.outputHash = simpleHash(output);
       log.confidence = confidence;
+
+      // Track metrics
+      trackAgentExecution(log.agentName, log.durationMs, true);
+
       this.notify();
     }
   }
@@ -99,6 +105,10 @@ class LoggerService {
       log.status = 'ERROR';
       log.durationMs = Date.now() - log.timestamp;
       log.error = error.message || String(error);
+
+      // Track metrics
+      trackAgentExecution(log.agentName, log.durationMs, false);
+
       this.notify();
     }
   }

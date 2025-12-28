@@ -126,8 +126,11 @@ app.post('/api/gemini/generate', async (req, res) => {
     }
 
     const startTime = Date.now();
+    metrics.geminiCalls++;
+
     const result = await client.models.generateContent({ model, contents, config });
     const duration = Date.now() - startTime;
+    metrics.totalDuration += duration;
 
     console.log(JSON.stringify({
       level: 'info',
@@ -147,6 +150,8 @@ app.post('/api/gemini/generate', async (req, res) => {
 
     res.json({ text });
   } catch (err) {
+    metrics.geminiErrors++;
+
     console.log(JSON.stringify({
       level: 'error',
       type: 'gemini_error',
@@ -180,6 +185,50 @@ app.post('/api/gemini/generate', async (req, res) => {
     console.error('[Gemini Backend] Sending error response:', { status, errorResponse });
     res.status(status).json(errorResponse);
   }
+});
+
+// Metrics endpoint for monitoring
+const metrics = {
+  requests: 0,
+  errors: 0,
+  geminiCalls: 0,
+  geminiErrors: 0,
+  totalDuration: 0,
+  startTime: Date.now()
+};
+
+app.get('/api/metrics', (_req, res) => {
+  const uptime = Date.now() - metrics.startTime;
+  const avgDuration = metrics.geminiCalls > 0 ? metrics.totalDuration / metrics.geminiCalls : 0;
+
+  res.json({
+    uptime: Math.floor(uptime / 1000), // in seconds
+    requests: {
+      total: metrics.requests,
+      errors: metrics.errors,
+      errorRate: metrics.requests > 0 ? (metrics.errors / metrics.requests * 100).toFixed(2) + '%' : '0%'
+    },
+    gemini: {
+      calls: metrics.geminiCalls,
+      errors: metrics.geminiErrors,
+      errorRate: metrics.geminiCalls > 0 ? (metrics.geminiErrors / metrics.geminiCalls * 100).toFixed(2) + '%' : '0%',
+      avgDuration: Math.round(avgDuration) + 'ms'
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Track metrics in existing endpoints
+app.use((req, res, next) => {
+  metrics.requests++;
+  const originalSend = res.send;
+  res.send = function(data) {
+    if (res.statusCode >= 400) {
+      metrics.errors++;
+    }
+    return originalSend.call(this, data);
+  };
+  next();
 });
 
 const server = app.listen(PORT, () => {
