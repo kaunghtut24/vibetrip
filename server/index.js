@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { globalRateLimiter, geminiRateLimiter, createRateLimitMiddleware } from './rateLimiter.js';
+import { validateGeminiRequest, sanitizeInput, validateRequestSize, validateContentType, validateAdminRequest } from './validation.js';
 
 // Load environment variables from .env (GEMINI_API_KEY is required)
 dotenv.config();
@@ -29,6 +30,11 @@ app.use((req, res, next) => {
 
 app.use(cors());
 app.use(express.json());
+
+// Apply request validation
+app.use(validateRequestSize(2 * 1024 * 1024)); // 2MB max
+app.use(validateContentType(['application/json']));
+app.use(sanitizeInput);
 
 // Apply global rate limiting to all routes
 app.use(createRateLimitMiddleware(globalRateLimiter));
@@ -109,8 +115,11 @@ app.get('/api/health', (_req, res) => {
   }
 });
 
-// Apply stricter rate limiting for Gemini endpoint
-app.post('/api/gemini/generate', createRateLimitMiddleware(geminiRateLimiter), async (req, res) => {
+// Apply stricter rate limiting and validation for Gemini endpoint
+app.post('/api/gemini/generate',
+  createRateLimitMiddleware(geminiRateLimiter),
+  validateGeminiRequest,
+  async (req, res) => {
   const requestId = req.requestId || 'unknown';
 
   try {
@@ -228,7 +237,7 @@ app.get('/api/metrics', (_req, res) => {
 });
 
 // Admin endpoint to reset rate limit for a specific IP
-app.post('/api/admin/rate-limit/reset', (req, res) => {
+app.post('/api/admin/rate-limit/reset', validateAdminRequest, (req, res) => {
   const { ip, limiter } = req.body;
 
   if (!ip) {
