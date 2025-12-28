@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
+import { globalRateLimiter, geminiRateLimiter, createRateLimitMiddleware } from './rateLimiter.js';
 
 // Load environment variables from .env (GEMINI_API_KEY is required)
 dotenv.config();
@@ -28,6 +29,9 @@ app.use((req, res, next) => {
 
 app.use(cors());
 app.use(express.json());
+
+// Apply global rate limiting to all routes
+app.use(createRateLimitMiddleware(globalRateLimiter));
 
 // Enhanced request logging middleware
 app.use((req, res, next) => {
@@ -105,7 +109,8 @@ app.get('/api/health', (_req, res) => {
   }
 });
 
-app.post('/api/gemini/generate', async (req, res) => {
+// Apply stricter rate limiting for Gemini endpoint
+app.post('/api/gemini/generate', createRateLimitMiddleware(geminiRateLimiter), async (req, res) => {
   const requestId = req.requestId || 'unknown';
 
   try {
@@ -214,8 +219,29 @@ app.get('/api/metrics', (_req, res) => {
       errorRate: metrics.geminiCalls > 0 ? (metrics.geminiErrors / metrics.geminiCalls * 100).toFixed(2) + '%' : '0%',
       avgDuration: Math.round(avgDuration) + 'ms'
     },
+    rateLimits: {
+      global: globalRateLimiter.getAllStats(),
+      gemini: geminiRateLimiter.getAllStats()
+    },
     timestamp: new Date().toISOString()
   });
+});
+
+// Admin endpoint to reset rate limit for a specific IP
+app.post('/api/admin/rate-limit/reset', (req, res) => {
+  const { ip, limiter } = req.body;
+
+  if (!ip) {
+    return res.status(400).json({ error: 'IP address is required' });
+  }
+
+  if (limiter === 'gemini') {
+    geminiRateLimiter.reset(ip);
+  } else {
+    globalRateLimiter.reset(ip);
+  }
+
+  res.json({ success: true, message: `Rate limit reset for IP: ${ip}` });
 });
 
 // Track metrics in existing endpoints

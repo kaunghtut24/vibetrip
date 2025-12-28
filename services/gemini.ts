@@ -5,6 +5,7 @@ import { estimateActivityCost } from "./costEstimator";
 import { agentLogger } from "./logger";
 import { config } from "./config";
 import { geminiCircuitBreaker } from "./circuitBreaker";
+import { intentCache, discoveryCache } from "./cache";
 
 // --- UTILITIES: RESILIENCE & RETRY ---
 
@@ -197,9 +198,17 @@ export const IntentZodSchema = z.object({
  * Extracts structured data from natural language chat with strict Zod validation.
  */
 export const parseIntentAgent = async (chatHistory: string, userProfile?: UserProfile | null): Promise<TripIntent> => {
+  // Check cache first
+  const cacheKey = `intent:${chatHistory}:${userProfile?.id || 'anonymous'}`;
+  const cached = intentCache.get(cacheKey);
+  if (cached) {
+    console.log('[IntentParser] Cache hit');
+    return cached;
+  }
+
   const logId = agentLogger.start("IntentParser", { chatHistory, userProfile });
   const model = "gemini-2.5-flash";
-  
+
   // Construct profile context string
   const profileContext = userProfile ? `
     USER PROFILE DEFAULTS (Apply these unless explicitly overridden in chat):
@@ -319,6 +328,10 @@ export const parseIntentAgent = async (chatHistory: string, userProfile?: UserPr
     );
 
     agentLogger.success(logId, result, result.confidenceScore);
+
+    // Cache the result
+    intentCache.set(cacheKey, result);
+
     return result;
 
   } catch (error: any) {
@@ -335,8 +348,16 @@ export const parseIntentAgent = async (chatHistory: string, userProfile?: UserPr
  * Retrieves a raw list of candidates (places, hotels, dining) based on intent.
  */
 export const discoveryAgent = async (intent: TripIntent): Promise<DiscoveryResult> => {
+  // Check cache first - use destination and key intent properties as cache key
+  const cacheKey = `discovery:${intent.destination}:${intent.durationDays}:${intent.budgetLevel}:${intent.vibes.join(',')}`;
+  const cached = discoveryCache.get(cacheKey);
+  if (cached) {
+    console.log('[DiscoveryAgent] Cache hit');
+    return cached;
+  }
+
   const logId = agentLogger.start("DiscoveryAgent", intent);
-  const model = "gemini-2.5-flash"; 
+  const model = "gemini-2.5-flash";
 
   const placeSchema = {
     type: Type.OBJECT,
@@ -413,6 +434,10 @@ export const discoveryAgent = async (intent: TripIntent): Promise<DiscoveryResul
     if (result.accommodations) result.accommodations.forEach(enrichPlaceWithCost);
 
     agentLogger.success(logId, result, result.confidenceScore);
+
+    // Cache the result
+    discoveryCache.set(cacheKey, result);
+
     return result;
 
   } catch (error) {
