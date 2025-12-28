@@ -29,9 +29,38 @@ app.use((req, res, next) => {
 app.use(cors());
 app.use(express.json());
 
-// Log all incoming requests
+// Enhanced request logging middleware
 app.use((req, res, next) => {
-  console.log(`[Gemini Backend] ${req.method} ${req.url}`);
+  const startTime = Date.now();
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  // Attach request ID to request object
+  req.requestId = requestId;
+
+  console.log(JSON.stringify({
+    level: 'info',
+    type: 'request',
+    requestId,
+    method: req.method,
+    url: req.url,
+    timestamp: new Date().toISOString()
+  }));
+
+  // Log response when finished
+  res.on('finish', () => {
+    const duration = Date.now() - startTime;
+    console.log(JSON.stringify({
+      level: 'info',
+      type: 'response',
+      requestId,
+      method: req.method,
+      url: req.url,
+      statusCode: res.statusCode,
+      duration,
+      timestamp: new Date().toISOString()
+    }));
+  });
+
   next();
 });
 
@@ -46,34 +75,69 @@ process.on('uncaughtException', (err) => {
   console.error('[Gemini Backend] Stack:', err?.stack);
 });
 
-// Simple health check to verify proxy/back-end wiring
+// Enhanced health check endpoint
 app.get('/api/health', (_req, res) => {
   console.log('[Gemini Backend] Health check requested');
   try {
-    res.json({ ok: true, hasGeminiApiKey: Boolean(apiKey) });
+    const health = {
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      service: 'vibetrip-ai-backend',
+      version: '1.0.0',
+      checks: {
+        gemini: apiKey ? 'configured' : 'missing',
+        memory: {
+          used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+          total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+          unit: 'MB'
+        }
+      }
+    };
+    res.json(health);
   } catch (err) {
     console.error('[Gemini Backend] Health check error:', err);
-    res.status(500).json({ error: 'Health check failed' });
+    res.status(500).json({
+      status: 'unhealthy',
+      error: 'Health check failed',
+      timestamp: new Date().toISOString()
+    });
   }
 });
 
 app.post('/api/gemini/generate', async (req, res) => {
+  const requestId = req.requestId || 'unknown';
+
   try {
     const { model, contents, config } = req.body || {};
 
-    console.log('[Gemini Backend] Incoming /api/gemini/generate', {
+    console.log(JSON.stringify({
+      level: 'info',
+      type: 'gemini_request',
+      requestId,
       model,
       hasContents: Boolean(contents),
       hasConfig: Boolean(config),
-    });
+      timestamp: new Date().toISOString()
+    }));
 
     if (!model || !contents) {
       return res.status(400).json({ error: 'model and contents are required' });
     }
 
-    console.log('[Gemini Backend] Calling generateContent...');
+    const startTime = Date.now();
     const result = await client.models.generateContent({ model, contents, config });
-    console.log('[Gemini Backend] Got result:', { hasText: Boolean(result.text) });
+    const duration = Date.now() - startTime;
+
+    console.log(JSON.stringify({
+      level: 'info',
+      type: 'gemini_response',
+      requestId,
+      model,
+      hasText: Boolean(result.text),
+      duration,
+      timestamp: new Date().toISOString()
+    }));
 
     const text = result.text;
 
@@ -83,8 +147,14 @@ app.post('/api/gemini/generate', async (req, res) => {
 
     res.json({ text });
   } catch (err) {
-    console.error('[Gemini Backend] Error:', err);
-    console.error('[Gemini Backend] Error stack:', err?.stack);
+    console.log(JSON.stringify({
+      level: 'error',
+      type: 'gemini_error',
+      requestId,
+      error: err.message,
+      stack: err?.stack,
+      timestamp: new Date().toISOString()
+    }));
 
     // Extract detailed error information from Gemini API errors
     let status = 500;
