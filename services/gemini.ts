@@ -3,18 +3,19 @@ import { Itinerary, TripIntent, DiscoveryResult, Place, OptimizationResult, DayP
 import { z } from "zod";
 import { estimateActivityCost } from "./costEstimator";
 import { agentLogger } from "./logger";
+import { config } from "./config";
 
 // --- UTILITIES: RESILIENCE & RETRY ---
 
 const CONFIG = {
-  RETRIES: 2,
-  TIMEOUT_MS: 30000, // 30 seconds per attempt (increased for complex operations)
-  BACKOFF_BASE_MS: 1000,
-  // Different timeouts for different agents
-  INTENT_TIMEOUT_MS: 15000,      // IntentParser: 15s
-  DISCOVERY_TIMEOUT_MS: 20000,   // DiscoveryAgent: 20s
-  OPTIMIZATION_TIMEOUT_MS: 35000, // OptimizationAgent: 35s (most complex)
-  REFINE_TIMEOUT_MS: 30000       // RefineAgent: 30s
+  RETRIES: config.retry.maxRetries,
+  TIMEOUT_MS: 30000, // Default timeout
+  BACKOFF_BASE_MS: config.retry.backoffBaseMs,
+  // Different timeouts for different agents (from config)
+  INTENT_TIMEOUT_MS: config.timeouts.intent,
+  DISCOVERY_TIMEOUT_MS: config.timeouts.discovery,
+  OPTIMIZATION_TIMEOUT_MS: config.timeouts.optimization,
+  REFINE_TIMEOUT_MS: config.timeouts.refine
 };
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -283,7 +284,8 @@ export const parseIntentAgent = async (chatHistory: string, userProfile?: UserPr
         const validationResult = IntentZodSchema.safeParse(parsedJson);
 
         if (!validationResult.success) {
-          throw new Error(`Validation Error: ${validationResult.error?.errors[0]?.message || 'Unknown validation error'}`);
+          const errorMessage = validationResult.error.errors[0]?.message || 'Unknown validation error';
+          throw new Error(`Validation Error: ${errorMessage}`);
         }
 
         // Transform currencies array to currencyRates Record
