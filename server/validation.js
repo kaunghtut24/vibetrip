@@ -25,12 +25,14 @@ export function validateGeminiRequest(req, res, next) {
     });
   }
   
-  // Validate model name
-  const validModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
-  if (!validModels.includes(model)) {
+  // Validate model name (allow gemini models)
+  const validModelPrefixes = ['gemini-'];
+  const isValidModel = validModelPrefixes.some(prefix => model.startsWith(prefix));
+
+  if (!isValidModel) {
     return res.status(400).json({
       error: 'Validation Error',
-      message: `Invalid model. Must be one of: ${validModels.join(', ')}`
+      message: 'Invalid model. Must be a Gemini model (e.g., gemini-2.5-flash, gemini-3-flash-preview)'
     });
   }
   
