@@ -296,13 +296,15 @@ export const parseIntentAgent = async (chatHistory: string, userProfile?: UserPr
         // Validate with Zod
         const validationResult = IntentZodSchema.safeParse(parsedJson);
 
-        if (!validationResult.success) {
-          const firstError = validationResult.error.errors[0];
-          const errorMessage = firstError?.message || 'Unknown validation error';
+        if (validationResult.success === false) {
+          // TypeScript narrowing: validationResult is SafeParseError here
+          const errors = validationResult.error.errors;
+          const errorMessage = errors[0]?.message || 'Unknown validation error';
           throw new Error(`Validation Error: ${errorMessage}`);
         }
 
         // Transform currencies array to currencyRates Record
+        // TypeScript narrowing: validationResult is SafeParseSuccess here
         const data = validationResult.data;
         const currencyRates: Record<string, { code: string; symbol: string; rateToUSD: number }> = {};
         if (data.currencies && Array.isArray(data.currencies)) {
