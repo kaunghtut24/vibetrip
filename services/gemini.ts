@@ -4,6 +4,7 @@ import { z } from "zod";
 import { estimateActivityCost } from "./costEstimator";
 import { agentLogger } from "./logger";
 import { config } from "./config";
+import { geminiCircuitBreaker } from "./circuitBreaker";
 
 // --- UTILITIES: RESILIENCE & RETRY ---
 
@@ -67,49 +68,52 @@ interface BackendGenerateRequest {
 }
 
 async function callGeminiGenerate({ model, contents, config }: BackendGenerateRequest): Promise<string> {
-	const response = await fetch(`${GEMINI_API_BASE}/generate`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ model, contents, config }),
-	});
+	// Wrap in circuit breaker to prevent cascading failures
+	return geminiCircuitBreaker.execute(async () => {
+		const response = await fetch(`${GEMINI_API_BASE}/generate`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ model, contents, config }),
+		});
 
-	if (!response.ok) {
-		let message = `Gemini backend error: ${response.status}`;
-		let errorDetails: any = null;
+		if (!response.ok) {
+			let message = `Gemini backend error: ${response.status}`;
+			let errorDetails: any = null;
 
-		try {
-			const errBody = await response.json();
-			errorDetails = errBody;
+			try {
+				const errBody = await response.json();
+				errorDetails = errBody;
 
-			// Handle different error response formats
-			if (errBody && typeof errBody.error === "string") {
-				message = errBody.error;
-			} else if (errBody && typeof errBody.error === "object") {
-				// Gemini API returns detailed error objects
-				const apiError = errBody.error;
-				if (apiError.message) {
-					message = apiError.message;
+				// Handle different error response formats
+				if (errBody && typeof errBody.error === "string") {
+					message = errBody.error;
+				} else if (errBody && typeof errBody.error === "object") {
+					// Gemini API returns detailed error objects
+					const apiError = errBody.error;
+					if (apiError.message) {
+						message = apiError.message;
+					}
+					if (apiError.code) {
+						message = `[${apiError.code}] ${message}`;
+					}
+				} else if (errBody && errBody.message) {
+					message = errBody.message;
 				}
-				if (apiError.code) {
-					message = `[${apiError.code}] ${message}`;
-				}
-			} else if (errBody && errBody.message) {
-				message = errBody.message;
+			} catch {
+				// ignore JSON parse failure
 			}
-		} catch {
-			// ignore JSON parse failure
+
+			const error: any = new Error(message);
+			error.details = errorDetails;
+			throw error;
 		}
 
-		const error: any = new Error(message);
-		error.details = errorDetails;
-		throw error;
-	}
-
-	const data = await response.json();
-	if (!data || typeof data.text !== "string") {
-		throw new Error("Gemini backend returned invalid response");
-	}
-	return data.text;
+		const data = await response.json();
+		if (!data || typeof data.text !== "string") {
+			throw new Error("Gemini backend returned invalid response");
+		}
+		return data.text;
+	});
 }
 
 /**
@@ -284,7 +288,8 @@ export const parseIntentAgent = async (chatHistory: string, userProfile?: UserPr
         const validationResult = IntentZodSchema.safeParse(parsedJson);
 
         if (!validationResult.success) {
-          const errorMessage = validationResult.error.errors[0]?.message || 'Unknown validation error';
+          const firstError = validationResult.error.errors[0];
+          const errorMessage = firstError?.message || 'Unknown validation error';
           throw new Error(`Validation Error: ${errorMessage}`);
         }
 
